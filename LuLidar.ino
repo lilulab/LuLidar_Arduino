@@ -1,6 +1,14 @@
 #include <Servo.h>
 #include "AS5145.h"
 
+// LIDAR Lite Stuff
+// #include <Wire.h>
+#include <i2c_t3.h>
+#define    LIDARLite_ADDRESS   0x62          // Default I2C Address of LIDAR-Lite.
+#define    RegisterMeasure     0x00          // Register to write to initiate ranging.
+#define    MeasureValue        0x04          // Value to initiate ranging.
+#define    RegisterHighLowB    0x8f          // Register to get both High and Low bytes in 1 call.
+
 #define DELTA_T_MS 10
 #define ENCODER_MAX_TICS 4096
 
@@ -32,6 +40,10 @@ void setup() {
 
   myservo.attach(17);  // attaches the servo on pin 9 to the servo object
   Serial.begin(115200);
+
+  // Wire.begin(); // join i2c bus
+  Wire.begin(I2C_MASTER, 0x00, I2C_PINS_18_19, I2C_PULLUP_EXT, 400000);
+  Wire.setDefaultTimeout(200000); // 200ms
 }
 
 void loop() {
@@ -41,9 +53,12 @@ void loop() {
 
   // Serial.print(++step);
 
-  val = 160;     // scale it to use it with the servo (value between 0 and 180)
+  val = 110;     // scale it to use it with the servo (value between 0 and 180)
   myservo.write(val);                  // sets the servo position according to the scaled value
   
+  // LIDAR Lite Code
+  int distance = getLidarLite();
+
   ticks_last = ticks_now;
   time_us_last = time_us_now;
   ticks_now = getEncoder();
@@ -95,7 +110,12 @@ void loop() {
   // Serial.print(angular_vel/360);   
 
 
-  delay(5);                           // waits for the servo to get there
+  // Print Distance
+  Serial.print("\t");
+  Serial.print(distance);
+
+
+  // delay(3);                           // waits for the servo to get there
   Serial.println(" ");
 }
 
@@ -126,4 +146,34 @@ long getEncoder (void) {
 //   }
 
   return value;
+}
+
+int getLidarLite(void) {
+
+  int reading = 0;
+
+  Wire.beginTransmission((int)LIDARLite_ADDRESS); // transmit to LIDAR-Lite
+  Wire.write((int)RegisterMeasure); // sets register pointer to  (0x00)  
+  Wire.write((int)MeasureValue); // sets register pointer to  (0x00)  
+  Wire.endTransmission(); // stop transmitting
+
+  delay(20); // Wait 20ms for transmit
+
+  Wire.beginTransmission((int)LIDARLite_ADDRESS); // transmit to LIDAR-Lite
+  Wire.write((int)RegisterHighLowB); // sets register pointer to (0x8f)
+  Wire.endTransmission(); // stop transmitting
+
+  delay(20); // Wait 20ms for transmit
+
+  Wire.requestFrom((int)LIDARLite_ADDRESS, 2); // request 2 bytes from LIDAR-Lite
+
+  if(2 <= Wire.available()) // if two bytes were received
+  {
+    reading = Wire.read(); // receive high byte (overwrites previous reading)
+    reading = reading << 8; // shift high byte to be high 8 bits
+    reading |= Wire.read(); // receive low byte as lower 8 bits
+    // Serial.println(reading); // print the reading
+  }
+
+  return reading;
 }
